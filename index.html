@@ -1,3 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Coffee Brands — Kakao Map Radius Checker (Multi-Comparator)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;color:#111}
+    h2{margin:0 0 12px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0}
+    label{font-weight:700}
+    input[type="text"],input[type="number"],select{padding:8px 10px;border:1px solid #ddd;border-radius:8px}
+    input[type="file"]{padding:6px}
+    button{padding:10px 14px;border:1px solid #111;background:#111;color:#fff;border-radius:8px;cursor:pointer}
+    button.secondary{background:#fff;color:#111}
+    #map{width:100%;height:60vh;border:1px solid #ddd;border-radius:10px}
+    .log{font-family:Consolas,Menlo,monospace;white-space:pre-wrap;background:#f8f8f8;padding:10px;border:1px solid #ddd;border-radius:8px;max-height:20vh;overflow:auto}
+    .pill{padding:2px 8px;border-radius:999px;background:#eef2ff;color:#111;font-size:12px}
+    .results{margin-top:12px}
+    .results h4{margin:14px 0 6px}
+    .card{border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#fff;max-height:28vh;overflow:auto}
+    .muted{color:#666}
+    .legend{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .dot{width:12px;height:12px;border-radius:999px;display:inline-block;border:2px solid #0003}
+    .dot.base{background:#ff6b6b}
+    .dot.base-unmatched{background:#60a5fa}
+    .dot.compare{background:#ffd400}
+    .tiny{font-size:12px}
+    .spacer{flex:1}
+    a.link{color:#0a58ca;text-decoration:none}
+    a.link:hover{text-decoration:underline}
+    a.store{color:#111;text-decoration:none}
+    a.store:hover{text-decoration:underline}
+
+    /* comparator rows */
+    .comp-row{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:#111;font-size:12px;border:1px solid #e5e7eb}
+  </style>
+</head>
+<body>
+  <h2>Coffee Brands Radius Checker (Kakao Map) — Multi-Comparator</h2>
+
+  <div class="row">
+    <label for="kakaoKey">Kakao JavaScript Key</label>
+    <input id="kakaoKey" type="text" placeholder="paste JS key" size="30">
+    <button id="loadSdk">Load SDK</button>
+    <span class="spacer"></span>
+    <div class="legend tiny">
+      <span class="dot base"></span> 기준(조건 만족)
+      <span class="dot base-unmatched"></span> 기준(조건 불만족)
+      <span class="dot compare"></span> 비교사(점 노출 토글)
+    </div>
+  </div>
+
+  <div class="row">
+    <label for="xlsx">Upload XLSX</label>
+    <input id="xlsx" type="file" accept=".xlsx,.xls">
+
+    <label for="baseBrand">기준 선택</label>
+    <select id="baseBrand" disabled>
+      <option value="">— select —</option>
+    </select>
+
+    <label for="radius">Radius (m)</label>
+    <input id="radius" type="number" value="500" min="50" step="50">
+
+    <button id="run">Analyze & Draw</button>
+    <button id="clear" class="secondary">Clear</button>
+
+    <button id="toggleDots" class="secondary" type="button">Dots: OFF</button>
+  </div>
+
+  <!-- NEW: Multi comparator controls -->
+  <div class="row">
+    <label for="compCount">비교사 수</label>
+    <select id="compCount">
+      <option value="1">1</option>
+      <option value="2" selected>2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+      <option value="6">6</option>
+      <option value="7">7</option>
+      <option value="8">8</option>
+    </select>
+    <span class="tiny muted">각 비교사에 대해 포함/미포함을 설정하세요.</span>
+  </div>
+
+  <div id="comparators"></div>
+
+  <div class="row">
+    <span class="pill" id="statBase">Base: -</span>
+    <span class="pill" id="statComps">Comparators: -</span>
+    <span class="pill" id="statMatched">조건 만족 기준: -</span>
+    <span class="pill" id="statUnmatched">조건 불만족 기준: -</span>
+    <span class="pill" id="statRadius">Radius: 500m</span>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="results">
+    <h4>조건을 만족하는 기준 매장 목록</h4>
+    <div class="card tiny" id="matchedList">
+      <span class="muted">결과가 여기 표시됩니다.</span>
+    </div>
+
+    <h4>Log</h4>
+    <div class="log" id="log"></div>
+  </div>
+
+ <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
 <script>
   'use strict';
 
@@ -318,3 +432,6 @@
   $('baseBrand').addEventListener('change', debouncedAnalyze);
   $('compCount').addEventListener('change', debouncedAnalyze);
 </script>
+
+</body>
+</html>
