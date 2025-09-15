@@ -49,7 +49,7 @@
     <span class="spacer"></span>
     <div class="legend tiny">
       <span class="dot base"></span> 기준(조건 만족)
-      <span class="dot.base-unmatched dot"></span> 기준(조건 불만족)
+      <span class="dot base-unmatched"></span> 기준(조건 불만족)
       <span class="dot compare"></span> 비교사(점 노출 토글)
     </div>
   </div>
@@ -110,8 +110,9 @@
     <div class="log" id="log"></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+ <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
+<<<<<<< HEAD
   <script>
   // ...existing code...
 
@@ -183,6 +184,9 @@
     map = new kakao.maps.Map($('map'), { center: center, level: 6 });
     setupFlagClustererEvents();
   }
+=======
+<script>
+>>>>>>> 6458fc6 (fix: remove blue markers & cleanup debounce)
   'use strict';
   // 이 레벨보다 "크면"(=더 멀리 보면) 개별 마커를 그리지 않음
   const HIDE_MARKERS_FROM_LEVEL = 5;  // 데이터 양에 맞춰 7~10 사이로 조절해봐
@@ -216,24 +220,39 @@
 
   const debounce = (fn,ms=120)=>{let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms)}};
 
-  // --- state
+  /* ---------- 상태 ---------- */
   var map, sdkReady = false, wbLoaded = false;
-  var baseMarkers = [], baseCircles = [], compareDots = [];
-  var datasets = {};  // { sheetName: [{name,address,lat,lng}, ...] }
-  var allowDrawCompare = false; // 노란 점 토글 (기본 OFF)
-  var selfExcludeMeters = 10;   // 동일 브랜드 자기 자신 제외 허용 거리
+  var baseCircles = [], compareDots = [];
+  var basePositions = [];                 // ✅ 마커 대신 중심 좌표만 모아 화면맞춤에 사용
+  var datasets = {};                      // { sheetName: [{name,address,lat,lng}, ...] }
+  var allowDrawCompare = false;           // 노란 점(비교사) 토글
+  var selfExcludeMeters = 10;             // 동일 브랜드 자기 자신 제외 허용 거리
 
+  /* ---------- 유틸 ---------- */
   function $(id){ return document.getElementById(id); }
   function log(msg){ $('log').textContent += msg + '\n'; }
+  function toNum(v){ if(typeof v==='number') return v; var n=parseFloat(String(v).trim()); return isFinite(n)?n:NaN; }
+  function distM(a,b,c,d){
+    var R=6371000,T=Math.PI/180,dl=(c-a)*T,do_=(d-b)*T;
+    var s=Math.sin(dl/2)**2 + Math.cos(a*T)*Math.cos(c*T)*Math.sin(do_/2)**2;
+    return 2*R*Math.asin(Math.sqrt(s));
+  }
 
-  // Kakao SDK load
+  /* ---------- Kakao 지도 SDK 로드 ---------- */
   $('loadSdk').addEventListener('click', function(){
     var key = $('kakaoKey').value.trim();
-    if(!key){ alert('Enter Kakao JavaScript key.'); return; }
-    if(sdkReady){ alert('SDK already loaded.'); return; }
+    if (!key){ alert('Enter Kakao JavaScript key.'); return; }
+    if (sdkReady){ alert('SDK already loaded.'); return; }
+
     var s = document.createElement('script');
-    s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + encodeURIComponent(key) + '&autoload=false';
-    s.onload = function(){ kakao.maps.load(function(){ initMap(); sdkReady = true; log('SDK loaded.'); }); };
+    s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' + encodeURIComponent(key);
+    s.onload = function(){
+      kakao.maps.load(function(){
+        initMap();
+        sdkReady = true;
+        log('SDK loaded.');
+      });
+    };
     s.onerror = function(){ alert('SDK load failed. Check key & domain.'); };
     document.head.appendChild(s);
   });
@@ -243,34 +262,7 @@
     map = new kakao.maps.Map($('map'), { center: center, level: 6 });
   }
 
-  function clearMap(){
-    baseMarkers.forEach(function(m){ m.setMap(null); });
-    baseCircles.forEach(function(c){ c.setMap(null); });
-    compareDots.forEach(function(d){ d.setMap(null); });
-    baseMarkers = []; baseCircles = []; compareDots = [];
-    $('matchedList').innerHTML = '<span class="muted">결과가 여기 표시됩니다.</span>';
-    $('statBase').textContent = 'Base: -';
-    $('statComps').textContent = 'Comparators: -';
-    $('statMatched').textContent = '조건 만족 기준: -';
-    $('statUnmatched').textContent = '조건 불만족 기준: -';
-    log('Cleared map overlays.');
-  }
-  $('clear').addEventListener('click', clearMap);
-
-  // helpers
-  function toNum(v){ if(typeof v==='number') return v; var n=parseFloat(String(v).trim()); return isFinite(n)?n:NaN; }
-  function distM(a,b,c,d){
-    var R=6371000,T=Math.PI/180,dl=(c-a)*T,do_=(d-b)*T;
-    var s=Math.sin(dl/2)**2 + Math.cos(a*T)*Math.cos(c*T)*Math.sin(do_/2)**2;
-    return 2*R*Math.asin(Math.sqrt(s));
-  }
-  function validateHeaders(rows){
-    if(!rows || !rows.length) return false;
-    var need = ['Name','Address','Latitude','Longitude'];
-    for (var i=0;i<need.length;i++){ if(!(need[i] in rows[0])) return false; }
-    return true;
-  }
-
+  /* ---------- XLSX 파서 ---------- */
   function readWorkbook(file){
     return file.arrayBuffer().then(function(ab){ return XLSX.read(ab,{type:'array'}); });
   }
@@ -288,18 +280,13 @@
       };
     }).filter(function(p){ return isFinite(p.lat) && isFinite(p.lng); });
   }
-
-  // populate selects from sheets
-  function populateBaseSelect(names){
-    var baseSel = $('baseBrand');
-    baseSel.innerHTML = '<option value="">— select —</option>';
-    names.forEach(function(n){
-      var o=document.createElement('option'); o.value=o.textContent=n; baseSel.appendChild(o);
-    });
-    baseSel.disabled = false;
+  function validateHeaders(rows){
+    if(!rows || !rows.length) return false;
+    var need = ['Name','Address','Latitude','Longitude'];
+    for (var i=0;i<need.length;i++){ if(!(need[i] in rows[0])) return false; }
+    return true;
   }
 
-  // read workbook on upload
   $('xlsx').addEventListener('change', function(){
     var file = $('xlsx').files && $('xlsx').files[0];
     if(!file){ return; }
@@ -330,7 +317,16 @@
     });
   });
 
-  // --- Multi comparator UI ---
+  function populateBaseSelect(names){
+    var baseSel = $('baseBrand');
+    baseSel.innerHTML = '<option value="">— select —</option>';
+    names.forEach(function(n){
+      var o=document.createElement('option'); o.value=o.textContent=n; baseSel.appendChild(o);
+    });
+    baseSel.disabled = false;
+  }
+
+  /* ---------- Multi comparator UI ---------- */
   function renderComparatorRows(n, brandList){
     var wrap = $('comparators');
     wrap.innerHTML = '';
@@ -354,7 +350,6 @@
     renderComparatorRows(n, brands);
   });
 
-  // --- Condition evaluation ---
   function readComparators(){
     var rows = Array.prototype.slice.call(document.querySelectorAll('#comparators .comp-row'));
     return rows.map(function(row, idx){
@@ -369,8 +364,7 @@
     for (var i=0;i<arr.length;i++){
       var s = arr[i];
       var d = distM(center.lat, center.lng, s.lat, s.lng);
-      // 동일 브랜드일 때 자기 자신 제외(근접)
-      if (anchorBrand===brand && d < selfExcludeMeters) continue;
+      if (anchorBrand===brand && d < selfExcludeMeters) continue; // 자기 자신 제외
       if (d <= rMeters) return true;
     }
     return false;
@@ -393,11 +387,17 @@
     return hits;
   }
 
-  // draw helpers
+  /* ---------- 그리기: 기본 마커 제거, 원만 그림 ---------- */
   function drawBase(lat,lng,label,radius,isMatched){
     var pos = new kakao.maps.LatLng(lat, lng);
-    var marker = new kakao.maps.Marker({ position: pos, title: label || '' });
-    marker.setMap(map); baseMarkers.push(marker);
+
+    // ❌ 기본 파란 마커 제거
+    // var marker = new kakao.maps.Marker({ position: pos, title: label || '' });
+    // marker.setMap(map);
+
+    // ✅ 화면 맞춤을 위해 좌표만 저장
+    basePositions.push(pos);
+
     var fill = isMatched ? '#FF6B6B' : '#60A5FA';
     var circle = new kakao.maps.Circle({
       center: pos, radius: radius, strokeWeight: 2,
@@ -411,14 +411,16 @@
     if (!allowDrawCompare) return;
     var safe = label ? label.replace(/"/g,'&quot;') : '';
     var html = '<div style="width:14px;height:14px;border-radius:999px;background:#FFD400;border:2px solid #00000033;box-shadow:0 1px 2px #00000022" title="'+safe+'"></div>';
-    var overlay = new kakao.maps.CustomOverlay({ position: new kakao.maps.LatLng(lat,lng), content: html, yAnchor: 0.5, xAnchor: 0.5 });
+    var overlay = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(lat,lng),
+      content: html, yAnchor: 0.5, xAnchor: 0.5
+    });
     overlay.setMap(map); compareDots.push(overlay);
   }
 
   function drawAllComparatorDots(comps){
     if (!allowDrawCompare) return;
-    // 중복 좌표 제거용 키
-    var used = new Set();
+    var used = new Set(); // 중복 좌표 제거
     comps.forEach(function(c){
       var arr = datasets[c.brand] || [];
       for (var i=0;i<arr.length;i++){
@@ -431,9 +433,9 @@
   }
 
   function fitToAll(){
-    if (baseMarkers.length === 0 && compareDots.length === 0) return;
+    if (basePositions.length === 0 && compareDots.length === 0) return;
     var bounds = new kakao.maps.LatLngBounds();
-    baseMarkers.forEach(function(m){ bounds.extend(m.getPosition()); });
+    basePositions.forEach(function(pos){ bounds.extend(pos); });
     compareDots.forEach(function(o){ bounds.extend(o.getPosition()); });
     map.setBounds(bounds, 24, 24, 24, 24);
   }
@@ -443,18 +445,17 @@
     return '<a class="link" target="_blank" rel="noopener" href="'+url+'">지도열기</a>';
   }
 
-  // fly helper
   function flyTo(lat, lng, level){
     if (!map) return;
     var pos = new kakao.maps.LatLng(lat, lng);
     map.panTo(pos);
     if (level) { map.setLevel(level); }
   }
-  window.flyTo = flyTo; // expose for onclick
+  window.flyTo = flyTo;
 
   function renderMatchedList(rows, anchorBrand){
     if (!rows.length){
-      $('matchedList').innerHTML = '<span class="muted">조건을 만족하는 기준 매장이 없습니다.</span>';
+      $('matchedList').innerHTML = '<span class="muted">결과를 만족하는 기준 매장이 없습니다.</span>';
       return;
     }
     var html = rows.map(function(r,i){
@@ -470,6 +471,20 @@
     }).join('');
     $('matchedList').innerHTML = html;
   }
+
+  function clearMap(){
+    baseCircles.forEach(function(c){ c.setMap(null); });
+    compareDots.forEach(function(d){ d.setMap(null); });
+    baseCircles = []; compareDots = [];
+    basePositions = [];                              // ✅ 좌표 배열 리셋
+    $('matchedList').innerHTML = '<span class="muted">결과가 여기 표시됩니다.</span>';
+    $('statBase').textContent = 'Base: -';
+    $('statComps').textContent = 'Comparators: -';
+    $('statMatched').textContent = '조건 만족 기준: -';
+    $('statUnmatched').textContent = '조건 불만족 기준: -';
+    log('Cleared map overlays.');
+  }
+  $('clear').addEventListener('click', clearMap);
 
   function analyzeAndDraw(){
     if(!sdkReady){ alert('Load SDK first.'); return; }
@@ -488,7 +503,7 @@
     var basePoints = datasets[anchor] || [];
     var hits = findAnchorsMeetingConditions(anchor, comps, radius);
 
-    // draw base circles
+    // 기준 매장: 원만 그리고(마커 없음), 좌표는 basePositions에 저장됨
     var hitSet = new Set(hits.map(function(p){return p.lat.toFixed(6)+'|'+p.lng.toFixed(6);}));
     basePoints.forEach(function(bp){
       var key = bp.lat.toFixed(6)+'|'+bp.lng.toFixed(6);
@@ -496,10 +511,10 @@
       drawBase(bp.lat, bp.lng, bp.name, radius, isHit);
     });
 
-    // comparator dots (optional)
+    // 비교사 점(선택)
     drawAllComparatorDots(comps);
 
-    // stats
+    // 통계
     $('statBase').textContent = 'Base: ' + basePoints.length + ' (' + anchor + ')';
     $('statComps').textContent = 'Comparators: ' + comps.map(function(c){return c.brand+'['+(c.mode==='include'?'포함':'미포함')+']';}).join(', ');
     $('statMatched').textContent= '조건 만족 기준: ' + hits.length;
@@ -515,17 +530,16 @@
   $('toggleDots').addEventListener('click', function(){
     allowDrawCompare = !allowDrawCompare;
     this.textContent = allowDrawCompare ? 'Dots: ON' : 'Dots: OFF';
-    // 재렌더
     if (sdkReady && wbLoaded && $('baseBrand').value) analyzeAndDraw();
   });
 
-  // debounce utility
+  // 몇 가지 값 바뀔 때 자동 재실행(느슨하게)
   function debounce(fn, ms){ var t; return function(){ var args=arguments; clearTimeout(t); t=setTimeout(function(){ fn.apply(null,args); }, ms); }; }
   var debouncedAnalyze = debounce(function(){ if (sdkReady && wbLoaded && $('baseBrand').value){ analyzeAndDraw(); } }, 300);
   $('radius').addEventListener('input', debouncedAnalyze);
   $('baseBrand').addEventListener('change', debouncedAnalyze);
   $('compCount').addEventListener('change', debouncedAnalyze);
+</script>
 
-  </script>
 </body>
 </html>
