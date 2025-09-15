@@ -1,398 +1,149 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <title>Coffee Brands — Kakao Map Radius Checker (Multi-Comparator)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" href="data:,">
-  <style>
-    *{box-sizing:border-box}
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;color:#111}
-    h2{margin:0 0 12px}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0}
-    label{font-weight:700}
-    input[type="text"],input[type="number"],select{padding:8px 10px;border:1px solid #ddd;border-radius:8px}
-    input[type="file"]{padding:6px}
-    button{padding:10px 14px;border:1px solid #111;background:#111;color:#fff;border-radius:8px;cursor:pointer}
-    button.secondary{background:#fff;color:#111}
-    #map{width:100%;height:60vh;border:1px solid #ddd;border-radius:10px}
-    .log{font-family:Consolas,Menlo,monospace;white-space:pre-wrap;background:#f8f8f8;padding:10px;border:1px solid #ddd;border-radius:8px;max-height:20vh;overflow:auto}
-    .pill{padding:2px 8px;border-radius:999px;background:#eef2ff;color:#111;font-size:12px}
-    .results{margin-top:12px}
-    .results h4{margin:14px 0 6px}
-    .card{border:1px solid #e5e7eb;border-radius:10px;padding:10px;background:#fff;max-height:28vh;overflow:auto}
-    .muted{color:#666}
-    .legend{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-    .dot{width:12px;height:12px;border-radius:999px;display:inline-block;border:2px solid #0003}
-    .dot.base{background:#ff6b6b}
-    .dot.base-unmatched{background:#60a5fa}
-    .dot.compare{background:#ffd400}
-    .tiny{font-size:12px}
-    .spacer{flex:1}
-    a.link{color:#0a58ca;text-decoration:none}
-    a.link:hover{text-decoration:underline}
-    a.store{color:#111;text-decoration:none}
-    a.store:hover{text-decoration:underline}
-
-    /* comparator rows */
-    .comp-row{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
-    .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:#111;font-size:12px;border:1px solid #e5e7eb}
-  </style>
-</head>
-<body>
-  <h2>Coffee Brands Radius Checker (Kakao Map) — Multi-Comparator</h2>
-
-  <div class="row">
-    <label for="kakaoKey">Kakao JavaScript Key</label>
-    <input id="kakaoKey" type="text" placeholder="paste JS key" size="30">
-    <button id="loadSdk">Load SDK</button>
-    <span class="spacer"></span>
-    <div class="legend tiny">
-      <span class="dot base"></span> 기준(조건 만족)
-      <span class="dot base-unmatched"></span> 기준(조건 불만족)
-      <span class="dot compare"></span> 비교사(점 노출 토글)
-    </div>
-  </div>
-
-  <div class="row">
-    <label for="xlsx">Upload XLSX</label>
-    <input id="xlsx" type="file" accept=".xlsx,.xls">
-
-    <label for="baseBrand">기준 선택</label>
-    <select id="baseBrand" disabled>
-      <option value="">— select —</option>
-    </select>
-
-    <label for="radius">Radius (m)</label>
-    <input id="radius" type="number" value="500" min="50" step="50">
-
-    <button id="run">Analyze & Draw</button>
-    <button id="clear" class="secondary">Clear</button>
-
-    <button id="toggleDots" class="secondary" type="button">Dots: OFF</button>
-  </div>
-
-  <!-- NEW: Multi comparator controls -->
-  <div class="row">
-    <label for="compCount">비교사 수</label>
-    <select id="compCount">
-      <option value="1">1</option>
-      <option value="2" selected>2</option>
-      <option value="3">3</option>
-      <option value="4">4</option>
-      <option value="5">5</option>
-      <option value="6">6</option>
-      <option value="7">7</option>
-      <option value="8">8</option>
-    </select>
-    <span class="tiny muted">각 비교사에 대해 포함/미포함을 설정하세요.</span>
-  </div>
-
-  <div id="comparators"></div>
-
-  <div class="row">
-    <span class="pill" id="statBase">Base: -</span>
-    <span class="pill" id="statComps">Comparators: -</span>
-    <span class="pill" id="statMatched">조건 만족 기준: -</span>
-    <span class="pill" id="statUnmatched">조건 불만족 기준: -</span>
-    <span class="pill" id="statRadius">Radius: 500m</span>
-  </div>
-
-  <div id="map"></div>
-
-  <div class="results">
-    <h4>조건을 만족하는 기준 매장 목록</h4>
-    <div class="card tiny" id="matchedList">
-      <span class="muted">결과가 여기 표시됩니다.</span>
-    </div>
-
-    <h4>Log</h4>
-    <div class="log" id="log"></div>
-  </div>
-
- <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-<<<<<<< HEAD
-<<<<<<< HEAD
-  <script>
-  // ...existing code...
-
-  function updateVisible() {
-    // ① 완전 줌아웃(=레벨이 임계치 이상)이면, 마커/클러스터 모두 제거하고 종료
-    const level = map.getLevel();
-    if (level >= HIDE_MARKERS_FROM_LEVEL) {
-      for (const m of markers.values()) m.setMap(null);
-      if (clusterer) clusterer.clear();
-      return;
-    }
-
-    // ② 개별 마커 표시 구간: 화면 바운드 + 조건 만족만 올리기
-    const bounds = map.getBounds();
-    const toShow = [];
-    for (const d of FLAG_DATA) {        // ← 너의 실제 데이터 배열
-      if (!flagsOn) break;
-      if (!meetsCondition(d)) { markers.get(d.id)?.setMap(null); continue; }
-      const ll = new kakao.maps.LatLng(d.lat, d.lng);
-      if (bounds.contain(ll)) {
-        const m = getOrCreateMarker(d);
-        m.setMap(map);
-        toShow.push(m);
-      } else {
-        markers.get(d.id)?.setMap(null);
-      }
-    }
-    if (clusterer) {
-      clusterer.clear();
-      clusterer.addMarkers(toShow);
-    }
-  }
-  const updateVisibleDebounced = debounce(updateVisible, 120);
-
-  // 지도 이동/줌 종료 시 갱신
-  function setupFlagClustererEvents() {
-    if (map) {
-      kakao.maps.event.addListener(map, 'idle', updateVisibleDebounced);
-    }
-  }
-
-  // 플래그 토글 버튼이 있다면
-  document.getElementById('toggleFlags')?.addEventListener('click', ()=>{
-    flagsOn = !flagsOn;
-    if (!flagsOn) { for(const m of markers.values()) m.setMap(null); if(clusterer) clusterer.clear(); }
-    else updateVisible();
-  });
-
-  // 초기 1회
-  function initialFlagVisible() {
-    updateVisible();
-  }
-
-  // ...existing code...
-  // Kakao SDK load
-=======
 <script>
   'use strict';
 
-  /* ---------- 상태 ---------- */
-  var map, sdkReady = false, wbLoaded = false;
-  var baseCircles = [], compareDots = [];
-  var basePositions = [];                 // ✅ 마커 대신 중심 좌표만 모아 화면맞춤에 사용
-  var datasets = {};                      // { sheetName: [{name,address,lat,lng}, ...] }
-  var allowDrawCompare = false;           // 노란 점(비교사) 토글
-  var selfExcludeMeters = 10;             // 동일 브랜드 자기 자신 제외 허용 거리
-
-  /* ---------- 유틸 ---------- */
-  function $(id){ return document.getElementById(id); }
-  function log(msg){ $('log').textContent += msg + '\n'; }
-  function toNum(v){ if(typeof v==='number') return v; var n=parseFloat(String(v).trim()); return isFinite(n)?n:NaN; }
-  function distM(a,b,c,d){
-    var R=6371000,T=Math.PI/180,dl=(c-a)*T,do_=(d-b)*T;
-    var s=Math.sin(dl/2)**2 + Math.cos(a*T)*Math.cos(c*T)*Math.sin(do_/2)**2;
-    return 2*R*Math.asin(Math.sqrt(s));
-  }
-
-  /* ---------- Kakao 지도 SDK 로드 ---------- */
->>>>>>> 6458fc637313a48d734ead2e0d6554499b614eb0
-  $('loadSdk').addEventListener('click', function(){
-    var key = $('kakaoKey').value.trim();
-    if (!key){ alert('Enter Kakao JavaScript key.'); return; }
-    if (sdkReady){ alert('SDK already loaded.'); return; }
-
-    var s = document.createElement('script');
-<<<<<<< HEAD
-    s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + encodeURIComponent(key) + '&autoload=false';
-    s.onload = function(){ kakao.maps.load(function(){ initMap(); sdkReady = true; log('SDK loaded.'); setupFlagClustererEvents(); initialFlagVisible(); }); };
-    s.onerror = function(){ alert('SDK load failed. Check key & domain.'); };
-    document.head.appendChild(s);
-  });
-
-  function initMap(){
-    var center = new kakao.maps.LatLng(37.5665, 126.9780);
-    map = new kakao.maps.Map($('map'), { center: center, level: 6 });
-    setupFlagClustererEvents();
-  }
-=======
-<script>
->>>>>>> 6458fc6 (fix: remove blue markers & cleanup debounce)
-  'use strict';
-  // 이 레벨보다 "크면"(=더 멀리 보면) 개별 마커를 그리지 않음
-  const HIDE_MARKERS_FROM_LEVEL = 5;  // 데이터 양에 맞춰 7~10 사이로 조절해봐
-
-  // --- Flag marker logic ---
-  const markers = new Map();     // id -> kakao.maps.Marker
-  let flagsOn = true;            // 토글 스위치
-  let clusterer;
-
-  function getOrCreateMarker(d){
-    let m = markers.get(d.id);
-    if(!m){
-      m = new kakao.maps.Marker({
-        position: new kakao.maps.LatLng(d.lat, d.lng),
-        title: d.title || '',
-        map: null
-      });
-      markers.set(d.id, m);
-    }
-    return m;
-  }
-
-  function meetsCondition(d){
-    // 너의 필터 조건으로 교체 (예시)
-    const onlyOppty = document.getElementById('onlyOppty')?.checked ?? false;
-    const minRes = Number(document.getElementById('minRes')?.value ?? 0);
-    if (onlyOppty && Number(d.compose) > 0) return false;
-    if (Number(d.res) < minRes) return false;
-    return true;
-  }
-
-  const debounce = (fn,ms=120)=>{let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms)}};
+  /* ---------- 상수 ---------- */
+  const SHOW_COMPARE_DOTS_FROM_LEVEL = 5; // 이 레벨(숫자 작을수록 더 줌인) 이내에서만 노란 점 표시
 
   /* ---------- 상태 ---------- */
-  var map, sdkReady = false, wbLoaded = false;
-  var baseCircles = [], compareDots = [];
-  var basePositions = [];                 // ✅ 마커 대신 중심 좌표만 모아 화면맞춤에 사용
-  var datasets = {};                      // { sheetName: [{name,address,lat,lng}, ...] }
-  var allowDrawCompare = false;           // 노란 점(비교사) 토글
-  var selfExcludeMeters = 10;             // 동일 브랜드 자기 자신 제외 허용 거리
+  let map, sdkReady = false, wbLoaded = false;
+  let baseCircles = [], compareDots = [];
+  let basePositions = [];                 // 화면맞춤용 좌표만 저장
+  let datasets = {};                      // { sheetName: [{name,address,lat,lng}, ...] }
+  let allowDrawCompare = false;           // 노란 점(비교사) 토글
+  const selfExcludeMeters = 10;           // 동일 브랜드 자기 자신 제외 허용 거리
 
   /* ---------- 유틸 ---------- */
-  function $(id){ return document.getElementById(id); }
-  function log(msg){ $('log').textContent += msg + '\n'; }
-  function toNum(v){ if(typeof v==='number') return v; var n=parseFloat(String(v).trim()); return isFinite(n)?n:NaN; }
+  const $ = (id)=>document.getElementById(id);
+  const log = (msg)=>{ $('log').textContent += msg + '\n'; };
+  const toNum = (v)=> typeof v==='number' ? v : (()=>{
+    const n = parseFloat(String(v).trim()); return Number.isFinite(n)?n:NaN;
+  })();
   function distM(a,b,c,d){
-    var R=6371000,T=Math.PI/180,dl=(c-a)*T,do_=(d-b)*T;
-    var s=Math.sin(dl/2)**2 + Math.cos(a*T)*Math.cos(c*T)*Math.sin(do_/2)**2;
+    const R=6371000,T=Math.PI/180,dl=(c-a)*T,do_=(d-b)*T;
+    const s=Math.sin(dl/2)**2 + Math.cos(a*T)*Math.cos(c*T)*Math.sin(do_/2)**2;
     return 2*R*Math.asin(Math.sqrt(s));
   }
+  const debounce = (fn, ms=300)=>{ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); }; };
 
   /* ---------- Kakao 지도 SDK 로드 ---------- */
-  $('loadSdk').addEventListener('click', function(){
-    var key = $('kakaoKey').value.trim();
+  $('loadSdk').addEventListener('click', ()=>{
+    const key = $('kakaoKey').value.trim();
     if (!key){ alert('Enter Kakao JavaScript key.'); return; }
     if (sdkReady){ alert('SDK already loaded.'); return; }
-
-    var s = document.createElement('script');
-=======
->>>>>>> 6458fc637313a48d734ead2e0d6554499b614eb0
+    const s = document.createElement('script');
     s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' + encodeURIComponent(key);
-    s.onload = function(){
-      kakao.maps.load(function(){
+    s.onload = ()=>{
+      kakao.maps.load(()=>{
         initMap();
         sdkReady = true;
         log('SDK loaded.');
+        // 줌/이동 후 자동 재그리기 (노란 점은 줌 레벨 조건도 반영)
+        kakao.maps.event.addListener(map, 'idle', debounce(()=>{
+          if (sdkReady && wbLoaded && $('baseBrand').value) analyzeAndDraw();
+        }, 250));
       });
     };
-    s.onerror = function(){ alert('SDK load failed. Check key & domain.'); };
+    s.onerror = ()=> alert('SDK load failed. Check key & domain.');
     document.head.appendChild(s);
   });
 
   function initMap(){
-    var center = new kakao.maps.LatLng(37.5665, 126.9780);
-    map = new kakao.maps.Map($('map'), { center: center, level: 6 });
+    const center = new kakao.maps.LatLng(37.5665, 126.9780);
+    map = new kakao.maps.Map($('map'), { center, level: 6 });
   }
 
   /* ---------- XLSX 파서 ---------- */
-  function readWorkbook(file){
-    return file.arrayBuffer().then(function(ab){ return XLSX.read(ab,{type:'array'}); });
-  }
+  function readWorkbook(file){ return file.arrayBuffer().then(ab=>XLSX.read(ab,{type:'array'})); }
   function sheetToRows(wb, name){
-    var ws = wb.Sheets[name];
+    const ws = wb.Sheets[name];
     return ws ? XLSX.utils.sheet_to_json(ws,{defval:''}) : null;
   }
   function rowsToPoints(rows){
-    return rows.map(function(r){
-      return {
-        name: String(r.Name || '').trim(),
-        address: String(r.Address || '').trim(),
-        lat: toNum(r.Latitude),
-        lng: toNum(r.Longitude)
-      };
-    }).filter(function(p){ return isFinite(p.lat) && isFinite(p.lng); });
+    return rows.map(r=>({
+      name: String(r.Name || '').trim(),
+      address: String(r.Address || '').trim(),
+      lat: toNum(r.Latitude),
+      lng: toNum(r.Longitude)
+    })).filter(p=>Number.isFinite(p.lat) && Number.isFinite(p.lng));
   }
   function validateHeaders(rows){
     if(!rows || !rows.length) return false;
-    var need = ['Name','Address','Latitude','Longitude'];
-    for (var i=0;i<need.length;i++){ if(!(need[i] in rows[0])) return false; }
-    return true;
+    const need = ['Name','Address','Latitude','Longitude'];
+    return need.every(k => k in rows[0]);
   }
 
-  $('xlsx').addEventListener('change', function(){
-    var file = $('xlsx').files && $('xlsx').files[0];
-    if(!file){ return; }
-    readWorkbook(file).then(function(wb){
+  $('xlsx').addEventListener('change', ()=>{
+    const file = $('xlsx').files?.[0];
+    if(!file) return;
+    readWorkbook(file).then(wb=>{
       datasets = {};
-      var expected = ['Compose','Mega','Paik','Starbucks','Twosome','Venti','Ediya','CBTL','Hollys'];
-      var available = wb.SheetNames.filter(function(n){
-        var rows = sheetToRows(wb,n);
+      const expected = ['Compose','Mega','Paik','Starbucks','Twosome','Venti','Ediya','CBTL','Hollys'];
+      const available = wb.SheetNames.filter(n=>{
+        const rows = sheetToRows(wb,n);
         if(!rows) return false;
         if(!validateHeaders(rows)) return false;
         datasets[n] = rowsToPoints(rows);
         return true;
       });
-
       if (available.length === 0){
         alert('유효한 시트가 없습니다. (필수 컬럼: Name, Address, Latitude, Longitude)');
         return;
       }
-      var ordered = expected.filter(function(n){ return available.indexOf(n) >= 0; });
-      available.forEach(function(n){ if(ordered.indexOf(n)<0) ordered.push(n); });
-
+      const ordered = [...expected.filter(n=>available.includes(n)), ...available.filter(n=>!expected.includes(n))];
       populateBaseSelect(ordered);
       renderComparatorRows(parseInt($('compCount').value,10), ordered);
       wbLoaded = true;
       log('Workbook loaded. Sheets: ' + ordered.join(', '));
-    }).catch(function(e){
-      console.error(e); alert('Read error: ' + (e && e.message ? e.message : e));
+    }).catch(e=>{
+      console.error(e); alert('Read error: ' + (e?.message || e));
     });
   });
 
   function populateBaseSelect(names){
-    var baseSel = $('baseBrand');
+    const baseSel = $('baseBrand');
     baseSel.innerHTML = '<option value="">— select —</option>';
-    names.forEach(function(n){
-      var o=document.createElement('option'); o.value=o.textContent=n; baseSel.appendChild(o);
+    names.forEach(n=>{
+      const o=document.createElement('option'); o.value=o.textContent=n; baseSel.appendChild(o);
     });
     baseSel.disabled = false;
   }
 
   /* ---------- Multi comparator UI ---------- */
   function renderComparatorRows(n, brandList){
-    var wrap = $('comparators');
+    const wrap = $('comparators');
     wrap.innerHTML = '';
-    if (!brandList) brandList = Object.keys(datasets);
-    for (var i=0;i<n;i++){
-      var row = document.createElement('div');
+    const brands = brandList || Object.keys(datasets);
+    for (let i=0;i<n;i++){
+      const row = document.createElement('div');
       row.className = 'comp-row';
-      var sel = document.createElement('select');
+      const sel = document.createElement('select');
       sel.className = 'comp-brand';
-      sel.innerHTML = brandList.map(function(b){return '<option value="'+b+'">'+b+'</option>';}).join('');
-      var inc = document.createElement('label'); inc.innerHTML = '<input type="radio" name="mode-'+i+'" value="include" checked> 포함';
-      var exc = document.createElement('label'); exc.innerHTML = '<input type="radio" name="mode-'+i+'" value="exclude"> 미포함';
+      sel.innerHTML = brands.map(b=>`<option value="${b}">${b}</option>`).join('');
+      const inc = document.createElement('label'); inc.innerHTML = `<input type="radio" name="mode-${i}" value="include" checked> 포함`;
+      const exc = document.createElement('label'); exc.innerHTML = `<input type="radio" name="mode-${i}" value="exclude"> 미포함`;
       row.appendChild(document.createTextNode('비교사 '+(i+1)+': '));
       row.appendChild(sel); row.appendChild(inc); row.appendChild(exc);
       wrap.appendChild(row);
     }
   }
   $('compCount').addEventListener('change', function(){
-    var n = parseInt(this.value,10);
-    var brands = Object.keys(datasets);
-    renderComparatorRows(n, brands);
+    renderComparatorRows(parseInt(this.value,10), Object.keys(datasets));
   });
 
   function readComparators(){
-    var rows = Array.prototype.slice.call(document.querySelectorAll('#comparators .comp-row'));
-    return rows.map(function(row, idx){
-      var brand = row.querySelector('.comp-brand').value;
-      var mode  = row.querySelector('input[name="mode-'+idx+'"]:checked').value; // include|exclude
-      return { brand: brand, mode: mode };
+    const rows = Array.from(document.querySelectorAll('#comparators .comp-row'));
+    return rows.map((row, idx)=>{
+      const brand = row.querySelector('.comp-brand').value;
+      const mode  = row.querySelector(`input[name="mode-${idx}"]:checked`).value; // include|exclude
+      return { brand, mode };
     });
   }
 
   function hasBrandWithin(center, brand, rMeters, anchorBrand){
-    var arr = datasets[brand] || [];
-    for (var i=0;i<arr.length;i++){
-      var s = arr[i];
-      var d = distM(center.lat, center.lng, s.lat, s.lng);
+    const arr = datasets[brand] || [];
+    for (let i=0;i<arr.length;i++){
+      const s = arr[i];
+      const d = distM(center.lat, center.lng, s.lat, s.lng);
       if (anchorBrand===brand && d < selfExcludeMeters) continue; // 자기 자신 제외
       if (d <= rMeters) return true;
     }
@@ -400,14 +151,14 @@
   }
 
   function findAnchorsMeetingConditions(anchorBrand, comps, rMeters){
-    var anchors = datasets[anchorBrand] || [];
-    var hits = [];
-    for (var i=0;i<anchors.length;i++){
-      var a = anchors[i];
-      var ok = true;
-      for (var j=0;j<comps.length;j++){
-        var c = comps[j];
-        var present = hasBrandWithin(a, c.brand, rMeters, anchorBrand);
+    const anchors = datasets[anchorBrand] || [];
+    const hits = [];
+    for (let i=0;i<anchors.length;i++){
+      const a = anchors[i];
+      let ok = true;
+      for (let j=0;j<comps.length;j++){
+        const c = comps[j];
+        const present = hasBrandWithin(a, c.brand, rMeters, anchorBrand);
         if (c.mode==='include' && !present) { ok=false; break; }
         if (c.mode==='exclude' && present)  { ok=false; break; }
       }
@@ -416,21 +167,15 @@
     return hits;
   }
 
-  /* ---------- 그리기: 기본 마커 제거, 원만 그림 ---------- */
+  /* ---------- 그리기 ---------- */
   function drawBase(lat,lng,label,radius,isMatched){
-    var pos = new kakao.maps.LatLng(lat, lng);
+    const pos = new kakao.maps.LatLng(lat, lng);
+    basePositions.push(pos); // 화면맞춤용
 
-    // ❌ 기본 파란 마커 제거
-    // var marker = new kakao.maps.Marker({ position: pos, title: label || '' });
-    // marker.setMap(map);
-
-    // ✅ 화면 맞춤을 위해 좌표만 저장
-    basePositions.push(pos);
-
-    var fill = isMatched ? '#FF6B6B' : '#60A5FA';
-    var circle = new kakao.maps.Circle({
-      center: pos, radius: radius, strokeWeight: 2,
-      strokeColor: fill, strokeOpacity: 1, strokeStyle: 'solid',
+    const fill = isMatched ? '#FF6B6B' : '#60A5FA';
+    const circle = new kakao.maps.Circle({
+      center: pos, radius,
+      strokeWeight: 2, strokeColor: fill, strokeOpacity: 1, strokeStyle: 'solid',
       fillColor: fill, fillOpacity: 0.20
     });
     circle.setMap(map); baseCircles.push(circle);
@@ -438,9 +183,10 @@
 
   function drawCompareDot(lat,lng,label){
     if (!allowDrawCompare) return;
-    var safe = label ? label.replace(/"/g,'&quot;') : '';
-    var html = '<div style="width:14px;height:14px;border-radius:999px;background:#FFD400;border:2px solid #00000033;box-shadow:0 1px 2px #00000022" title="'+safe+'"></div>';
-    var overlay = new kakao.maps.CustomOverlay({
+    if (map.getLevel() > SHOW_COMPARE_DOTS_FROM_LEVEL) return; // 줌아웃 시 노란 점 숨김
+    const safe = label ? label.replace(/"/g,'&quot;') : '';
+    const html = `<div style="width:14px;height:14px;border-radius:999px;background:#FFD400;border:2px solid #00000033;box-shadow:0 1px 2px #00000022" title="${safe}"></div>`;
+    const overlay = new kakao.maps.CustomOverlay({
       position: new kakao.maps.LatLng(lat,lng),
       content: html, yAnchor: 0.5, xAnchor: 0.5
     });
@@ -449,12 +195,13 @@
 
   function drawAllComparatorDots(comps){
     if (!allowDrawCompare) return;
-    var used = new Set(); // 중복 좌표 제거
-    comps.forEach(function(c){
-      var arr = datasets[c.brand] || [];
-      for (var i=0;i<arr.length;i++){
-        var p = arr[i];
-        var key = p.lat.toFixed(6)+'|'+p.lng.toFixed(6);
+    if (map.getLevel() > SHOW_COMPARE_DOTS_FROM_LEVEL) return; // 줌 제한
+    const used = new Set(); // 중복 좌표 제거
+    comps.forEach(c=>{
+      const arr = datasets[c.brand] || [];
+      for (let i=0;i<arr.length;i++){
+        const p = arr[i];
+        const key = p.lat.toFixed(6)+'|'+p.lng.toFixed(6);
         if (used.has(key)) continue; used.add(key);
         drawCompareDot(p.lat, p.lng, p.name || p.address);
       }
@@ -463,22 +210,22 @@
 
   function fitToAll(){
     if (basePositions.length === 0 && compareDots.length === 0) return;
-    var bounds = new kakao.maps.LatLngBounds();
-    basePositions.forEach(function(pos){ bounds.extend(pos); });
-    compareDots.forEach(function(o){ bounds.extend(o.getPosition()); });
+    const bounds = new kakao.maps.LatLngBounds();
+    basePositions.forEach(pos=>bounds.extend(pos));
+    compareDots.forEach(o=>bounds.extend(o.getPosition()));
     map.setBounds(bounds, 24, 24, 24, 24);
   }
 
   function linkToKakaoMap(q){
-    var url = 'https://map.kakao.com/?q=' + encodeURIComponent(q);
-    return '<a class="link" target="_blank" rel="noopener" href="'+url+'">지도열기</a>';
+    const url = 'https://map.kakao.com/?q=' + encodeURIComponent(q);
+    return `<a class="link" target="_blank" rel="noopener" href="${url}">지도열기</a>`;
   }
 
   function flyTo(lat, lng, level){
     if (!map) return;
-    var pos = new kakao.maps.LatLng(lat, lng);
+    const pos = new kakao.maps.LatLng(lat, lng);
     map.panTo(pos);
-    if (level) { map.setLevel(level); }
+    if (level) map.setLevel(level);
   }
   window.flyTo = flyTo;
 
@@ -487,25 +234,26 @@
       $('matchedList').innerHTML = '<span class="muted">결과를 만족하는 기준 매장이 없습니다.</span>';
       return;
     }
-    var html = rows.map(function(r,i){
-      var title = (i+1)+'. ';
-      var nameA = '<a href="#" class="store" onclick="flyTo('+r.lat+','+r.lng+',4);return false;">'+(r.name||'(무제)')+'</a>';
-      var addr  = r.address || '';
-      var link  = linkToKakaoMap(r.address || (r.lat+','+r.lng));
-      return '<div style="margin:6px 0;">'
-           +   '<div><strong>'+title+nameA+'</strong> <span class="badge">'+anchorBrand+'</span></div>'
-           +   '<div class="muted">'+addr+'</div>'
-           +   '<div class="tiny">'+link+'</div>'
-           + '</div>';
+    const html = rows.map((r,i)=>{
+      const title = (i+1)+'. ';
+      const nameA = `<a href="#" class="store" onclick="flyTo(${r.lat},${r.lng},4);return false;">${r.name||'(무제)'}</a>`;
+      const addr  = r.address || '';
+      const link  = linkToKakaoMap(r.address || (r.lat+','+r.lng));
+      return `
+        <div style="margin:6px 0;">
+          <div><strong>${title}${nameA}</strong> <span class="badge">${anchorBrand}</span></div>
+          <div class="muted">${addr}</div>
+          <div class="tiny">${link}</div>
+        </div>`;
     }).join('');
     $('matchedList').innerHTML = html;
   }
 
   function clearMap(){
-    baseCircles.forEach(function(c){ c.setMap(null); });
-    compareDots.forEach(function(d){ d.setMap(null); });
+    baseCircles.forEach(c=>c.setMap(null));
+    compareDots.forEach(d=>d.setMap(null));
     baseCircles = []; compareDots = [];
-    basePositions = [];                              // ✅ 좌표 배열 리셋
+    basePositions = [];
     $('matchedList').innerHTML = '<span class="muted">결과가 여기 표시됩니다.</span>';
     $('statBase').textContent = 'Base: -';
     $('statComps').textContent = 'Comparators: -';
@@ -519,39 +267,39 @@
     if(!sdkReady){ alert('Load SDK first.'); return; }
     if(!wbLoaded){ alert('엑셀을 먼저 업로드하세요.'); return; }
 
-    var anchor = $('baseBrand').value;
+    const anchor = $('baseBrand').value;
     if(!anchor){ alert('기준사를 선택하세요.'); return; }
-    var radius = parseInt($('radius').value,10) || 500;
+    const radius = parseInt($('radius').value,10) || 500;
     $('statRadius').textContent = 'Radius: '+radius+'m';
 
-    var comps = readComparators();
+    const comps = readComparators();
     if (comps.length === 0){ alert('비교사를 추가하세요.'); return; }
 
     clearMap();
 
-    var basePoints = datasets[anchor] || [];
-    var hits = findAnchorsMeetingConditions(anchor, comps, radius);
+    const basePoints = datasets[anchor] || [];
+    const hits = findAnchorsMeetingConditions(anchor, comps, radius);
 
-    // 기준 매장: 원만 그리고(마커 없음), 좌표는 basePositions에 저장됨
-    var hitSet = new Set(hits.map(function(p){return p.lat.toFixed(6)+'|'+p.lng.toFixed(6);}));
-    basePoints.forEach(function(bp){
-      var key = bp.lat.toFixed(6)+'|'+bp.lng.toFixed(6);
-      var isHit = hitSet.has(key);
+    // 기준 매장: 원(빨강=조건 만족, 파랑=불만족)
+    const hitSet = new Set(hits.map(p=>p.lat.toFixed(6)+'|'+p.lng.toFixed(6)));
+    basePoints.forEach(bp=>{
+      const key = bp.lat.toFixed(6)+'|'+bp.lng.toFixed(6);
+      const isHit = hitSet.has(key);
       drawBase(bp.lat, bp.lng, bp.name, radius, isHit);
     });
 
-    // 비교사 점(선택)
+    // 비교사 점(줌인일 때만 표시)
     drawAllComparatorDots(comps);
 
     // 통계
     $('statBase').textContent = 'Base: ' + basePoints.length + ' (' + anchor + ')';
-    $('statComps').textContent = 'Comparators: ' + comps.map(function(c){return c.brand+'['+(c.mode==='include'?'포함':'미포함')+']';}).join(', ');
+    $('statComps').textContent = 'Comparators: ' + comps.map(c=>`${c.brand}[${c.mode==='include'?'포함':'미포함'}]`).join(', ');
     $('statMatched').textContent= '조건 만족 기준: ' + hits.length;
     $('statUnmatched').textContent= '조건 불만족 기준: ' + (basePoints.length - hits.length);
 
     renderMatchedList(hits, anchor);
     fitToAll();
-    log('Done. anchor="'+anchor+'", comps='+JSON.stringify(comps)+', radius='+radius+'m, hits='+hits.length);
+    log(`Done. anchor="${anchor}", comps=${JSON.stringify(comps)}, radius=${radius}m, hits=${hits.length}, level=${map.getLevel()}`);
   }
 
   $('run').addEventListener('click', analyzeAndDraw);
@@ -562,13 +310,11 @@
     if (sdkReady && wbLoaded && $('baseBrand').value) analyzeAndDraw();
   });
 
-  // 몇 가지 값 바뀔 때 자동 재실행(느슨하게)
-  function debounce(fn, ms){ var t; return function(){ var args=arguments; clearTimeout(t); t=setTimeout(function(){ fn.apply(null,args); }, ms); }; }
-  var debouncedAnalyze = debounce(function(){ if (sdkReady && wbLoaded && $('baseBrand').value){ analyzeAndDraw(); } }, 300);
+  // 값 변경 시 느슨하게 재실행
+  const debouncedAnalyze = debounce(()=>{
+    if (sdkReady && wbLoaded && $('baseBrand').value) analyzeAndDraw();
+  }, 300);
   $('radius').addEventListener('input', debouncedAnalyze);
   $('baseBrand').addEventListener('change', debouncedAnalyze);
   $('compCount').addEventListener('change', debouncedAnalyze);
 </script>
-
-</body>
-</html>
