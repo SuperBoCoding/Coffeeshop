@@ -113,7 +113,108 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script>
+  // ...existing code...
+
+  function updateVisible() {
+    // ① 완전 줌아웃(=레벨이 임계치 이상)이면, 마커/클러스터 모두 제거하고 종료
+    const level = map.getLevel();
+    if (level >= HIDE_MARKERS_FROM_LEVEL) {
+      for (const m of markers.values()) m.setMap(null);
+      if (clusterer) clusterer.clear();
+      return;
+    }
+
+    // ② 개별 마커 표시 구간: 화면 바운드 + 조건 만족만 올리기
+    const bounds = map.getBounds();
+    const toShow = [];
+    for (const d of FLAG_DATA) {        // ← 너의 실제 데이터 배열
+      if (!flagsOn) break;
+      if (!meetsCondition(d)) { markers.get(d.id)?.setMap(null); continue; }
+      const ll = new kakao.maps.LatLng(d.lat, d.lng);
+      if (bounds.contain(ll)) {
+        const m = getOrCreateMarker(d);
+        m.setMap(map);
+        toShow.push(m);
+      } else {
+        markers.get(d.id)?.setMap(null);
+      }
+    }
+    if (clusterer) {
+      clusterer.clear();
+      clusterer.addMarkers(toShow);
+    }
+  }
+  const updateVisibleDebounced = debounce(updateVisible, 120);
+
+  // 지도 이동/줌 종료 시 갱신
+  function setupFlagClustererEvents() {
+    if (map) {
+      kakao.maps.event.addListener(map, 'idle', updateVisibleDebounced);
+    }
+  }
+
+  // 플래그 토글 버튼이 있다면
+  document.getElementById('toggleFlags')?.addEventListener('click', ()=>{
+    flagsOn = !flagsOn;
+    if (!flagsOn) { for(const m of markers.values()) m.setMap(null); if(clusterer) clusterer.clear(); }
+    else updateVisible();
+  });
+
+  // 초기 1회
+  function initialFlagVisible() {
+    updateVisible();
+  }
+
+  // ...existing code...
+  // Kakao SDK load
+  $('loadSdk').addEventListener('click', function(){
+    var key = $('kakaoKey').value.trim();
+    if(!key){ alert('Enter Kakao JavaScript key.'); return; }
+    if(sdkReady){ alert('SDK already loaded.'); return; }
+    var s = document.createElement('script');
+    s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + encodeURIComponent(key) + '&autoload=false';
+    s.onload = function(){ kakao.maps.load(function(){ initMap(); sdkReady = true; log('SDK loaded.'); setupFlagClustererEvents(); initialFlagVisible(); }); };
+    s.onerror = function(){ alert('SDK load failed. Check key & domain.'); };
+    document.head.appendChild(s);
+  });
+
+  function initMap(){
+    var center = new kakao.maps.LatLng(37.5665, 126.9780);
+    map = new kakao.maps.Map($('map'), { center: center, level: 6 });
+    setupFlagClustererEvents();
+  }
   'use strict';
+  // 이 레벨보다 "크면"(=더 멀리 보면) 개별 마커를 그리지 않음
+  const HIDE_MARKERS_FROM_LEVEL = 8;  // 데이터 양에 맞춰 7~10 사이로 조절해봐
+
+  // --- Flag marker logic ---
+  const markers = new Map();     // id -> kakao.maps.Marker
+  let flagsOn = true;            // 토글 스위치
+  let clusterer;
+
+  function getOrCreateMarker(d){
+    let m = markers.get(d.id);
+    if(!m){
+      m = new kakao.maps.Marker({
+        position: new kakao.maps.LatLng(d.lat, d.lng),
+        title: d.title || '',
+        map: null
+      });
+      markers.set(d.id, m);
+    }
+    return m;
+  }
+
+  function meetsCondition(d){
+    // 너의 필터 조건으로 교체 (예시)
+    const onlyOppty = document.getElementById('onlyOppty')?.checked ?? false;
+    const minRes = Number(document.getElementById('minRes')?.value ?? 0);
+    if (onlyOppty && Number(d.compose) > 0) return false;
+    if (Number(d.res) < minRes) return false;
+    return true;
+  }
+
+  const debounce = (fn,ms=120)=>{let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms)}};
 
   // --- state
   var map, sdkReady = false, wbLoaded = false;
