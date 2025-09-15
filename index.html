@@ -113,6 +113,7 @@
  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   <script>
   // ...existing code...
 
@@ -168,11 +169,37 @@
 
   // ...existing code...
   // Kakao SDK load
+=======
+<script>
+  'use strict';
+
+  /* ---------- 상태 ---------- */
+  var map, sdkReady = false, wbLoaded = false;
+  var baseCircles = [], compareDots = [];
+  var basePositions = [];                 // ✅ 마커 대신 중심 좌표만 모아 화면맞춤에 사용
+  var datasets = {};                      // { sheetName: [{name,address,lat,lng}, ...] }
+  var allowDrawCompare = false;           // 노란 점(비교사) 토글
+  var selfExcludeMeters = 10;             // 동일 브랜드 자기 자신 제외 허용 거리
+
+  /* ---------- 유틸 ---------- */
+  function $(id){ return document.getElementById(id); }
+  function log(msg){ $('log').textContent += msg + '\n'; }
+  function toNum(v){ if(typeof v==='number') return v; var n=parseFloat(String(v).trim()); return isFinite(n)?n:NaN; }
+  function distM(a,b,c,d){
+    var R=6371000,T=Math.PI/180,dl=(c-a)*T,do_=(d-b)*T;
+    var s=Math.sin(dl/2)**2 + Math.cos(a*T)*Math.cos(c*T)*Math.sin(do_/2)**2;
+    return 2*R*Math.asin(Math.sqrt(s));
+  }
+
+  /* ---------- Kakao 지도 SDK 로드 ---------- */
+>>>>>>> 6458fc637313a48d734ead2e0d6554499b614eb0
   $('loadSdk').addEventListener('click', function(){
     var key = $('kakaoKey').value.trim();
-    if(!key){ alert('Enter Kakao JavaScript key.'); return; }
-    if(sdkReady){ alert('SDK already loaded.'); return; }
+    if (!key){ alert('Enter Kakao JavaScript key.'); return; }
+    if (sdkReady){ alert('SDK already loaded.'); return; }
+
     var s = document.createElement('script');
+<<<<<<< HEAD
     s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + encodeURIComponent(key) + '&autoload=false';
     s.onload = function(){ kakao.maps.load(function(){ initMap(); sdkReady = true; log('SDK loaded.'); setupFlagClustererEvents(); initialFlagVisible(); }); };
     s.onerror = function(){ alert('SDK load failed. Check key & domain.'); };
@@ -245,6 +272,8 @@
     if (sdkReady){ alert('SDK already loaded.'); return; }
 
     var s = document.createElement('script');
+=======
+>>>>>>> 6458fc637313a48d734ead2e0d6554499b614eb0
     s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' + encodeURIComponent(key);
     s.onload = function(){
       kakao.maps.load(function(){
