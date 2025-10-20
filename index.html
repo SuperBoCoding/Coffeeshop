@@ -26,7 +26,6 @@
     .dot{width:12px;height:12px;border-radius:999px;display:inline-block;border:2px solid #0003}
     .dot.base{background:#ff6b6b}
     .dot.base-unmatched{background:#60a5fa}
-    .dot.compare{background:#ffd400}
     .tiny{font-size:12px}
     .spacer{flex:1}
     a.link{color:#0a58ca;text-decoration:none}
@@ -34,9 +33,15 @@
     a.store{color:#111;text-decoration:none}
     a.store:hover{text-decoration:underline}
 
-    /* comparator rows */
     .comp-row{display:flex;gap:8px;align-items:center;margin:6px 0;flex-wrap:wrap}
     .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:#111;font-size:12px;border:1px solid #e5e7eb}
+
+    /* Tabs */
+    .tabs{display:flex;gap:6px;margin-top:8px}
+    .tab-btn{padding:8px 12px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;cursor:pointer}
+    .tab-btn.active{background:#111;color:#fff;border-color:#111}
+    .tab-panel{display:none}
+    .tab-panel.active{display:block}
   </style>
 </head>
 <body>
@@ -47,10 +52,10 @@
     <input id="kakaoKey" type="text" placeholder="paste JS key" size="30">
     <button id="loadSdk">Load SDK</button>
     <span class="spacer"></span>
-    <div class="legend tiny">
+    <div id="legend" class="legend tiny">
       <span class="dot base"></span> 기준(조건 만족)
-      <span class="dot.base-unmatched dot"></span> 기준(조건 불만족)
-      <span class="dot compare"></span> 비교사(점 노출 토글)
+      <span class="dot base-unmatched"></span> 기준(조건 불만족)
+      <!-- 비교사 색상은 분석 시 동적으로 채움 -->
     </div>
   </div>
 
@@ -68,8 +73,6 @@
 
     <button id="run">Analyze & Draw</button>
     <button id="clear" class="secondary">Clear</button>
-
-    <button id="toggleDots" class="secondary" type="button">Dots: OFF</button>
   </div>
 
   <!-- NEW: Multi comparator controls -->
@@ -101,9 +104,23 @@
   <div id="map"></div>
 
   <div class="results">
-    <h4>조건을 만족하는 기준 매장 목록</h4>
-    <div class="card tiny" id="matchedList">
-      <span class="muted">결과가 여기 표시됩니다.</span>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tab-matched">조건 만족</button>
+      <button class="tab-btn" data-tab="tab-unmatched">조건 불만족</button>
+    </div>
+
+    <div id="tab-matched" class="tab-panel active">
+      <h4>조건을 만족하는 기준 매장 목록</h4>
+      <div class="card tiny" id="matchedList">
+        <span class="muted">결과가 여기 표시됩니다.</span>
+      </div>
+    </div>
+
+    <div id="tab-unmatched" class="tab-panel">
+      <h4>조건을 불만족하는 기준 매장 목록</h4>
+      <div class="card tiny" id="unmatchedList">
+        <span class="muted">결과가 여기 표시됩니다.</span>
+      </div>
     </div>
 
     <h4>Log</h4>
@@ -117,13 +134,25 @@
 
   // --- state
   var map, sdkReady = false, wbLoaded = false;
-  var baseMarkers = [], baseCircles = [], compareDots = [];
-  var datasets = {};  // { sheetName: [{name,address,lat,lng}, ...] }
-  var allowDrawCompare = false; // 노란 점 토글 (기본 OFF)
-  var selfExcludeMeters = 10;   // 동일 브랜드 자기 자신 제외 허용 거리
+  var baseCircles = [], compareDots = [];
+  var basePositions = [];
+  var datasets = {};
+  var selfExcludeMeters = 10;
 
   function $(id){ return document.getElementById(id); }
   function log(msg){ $('log').textContent += msg + '\n'; }
+
+  // Tabs
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('.tab-btn');
+    if(!btn) return;
+    document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+    document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+    btn.classList.add('active');
+    var id = btn.getAttribute('data-tab');
+    var panel = document.getElementById(id);
+    if(panel) panel.classList.add('active');
+  });
 
   // Kakao SDK load
   $('loadSdk').addEventListener('click', function(){
@@ -143,15 +172,21 @@
   }
 
   function clearMap(){
-    baseMarkers.forEach(function(m){ m.setMap(null); });
     baseCircles.forEach(function(c){ c.setMap(null); });
     compareDots.forEach(function(d){ d.setMap(null); });
-    baseMarkers = []; baseCircles = []; compareDots = [];
+    baseCircles = []; compareDots = [];
+    basePositions = [];
     $('matchedList').innerHTML = '<span class="muted">결과가 여기 표시됩니다.</span>';
+    $('unmatchedList').innerHTML = '<span class="muted">결과가 여기 표시됩니다.</span>';
     $('statBase').textContent = 'Base: -';
     $('statComps').textContent = 'Comparators: -';
     $('statMatched').textContent = '조건 만족 기준: -';
     $('statUnmatched').textContent = '조건 불만족 기준: -';
+    // legend 초기화(기준사만 남김)
+    var legend = $('legend');
+    legend.innerHTML =
+      '<span class="dot base"></span> 기준(조건 만족) '+
+      '<span class="dot base-unmatched"></span> 기준(조건 불만족)';
     log('Cleared map overlays.');
   }
   $('clear').addEventListener('click', clearMap);
@@ -188,7 +223,6 @@
     }).filter(function(p){ return isFinite(p.lat) && isFinite(p.lng); });
   }
 
-  // populate selects from sheets
   function populateBaseSelect(names){
     var baseSel = $('baseBrand');
     baseSel.innerHTML = '<option value="">— select —</option>';
@@ -268,16 +302,44 @@
     for (var i=0;i<arr.length;i++){
       var s = arr[i];
       var d = distM(center.lat, center.lng, s.lat, s.lng);
-      // 동일 브랜드일 때 자기 자신 제외(근접)
       if (anchorBrand===brand && d < selfExcludeMeters) continue;
       if (d <= rMeters) return true;
     }
     return false;
   }
 
+  function nearestIncludedBrandDistance(centerPoint, comps, rMeters, anchorBrand){
+    var best = { dist: Infinity, brand: null, store: null };
+    for (var j=0;j<comps.length;j++){
+      var c = comps[j];
+      if (c.mode !== 'include') continue;
+      var arr = datasets[c.brand] || [];
+      for (var k=0;k<arr.length;k++){
+        var s = arr[k];
+        var d = distM(centerPoint.lat, centerPoint.lng, s.lat, s.lng);
+        if (anchorBrand === c.brand && d < selfExcludeMeters) continue;
+        if (d <= rMeters && d < best.dist){
+          best = { dist: d, brand: c.brand, store: (s.name || s.address || '') };
+        }
+      }
+    }
+    return best;
+  }
+
+  function firstBreakReason(centerPoint, comps, rMeters, anchorBrand){
+    for (var j=0;j<comps.length;j++){
+      var c = comps[j];
+      var present = hasBrandWithin(centerPoint, c.brand, rMeters, anchorBrand);
+      if (c.mode==='include' && !present) return {type:'include', brand:c.brand};
+      if (c.mode==='exclude' && present)  return {type:'exclude', brand:c.brand};
+    }
+    return null;
+  }
+
   function findAnchorsMeetingConditions(anchorBrand, comps, rMeters){
     var anchors = datasets[anchorBrand] || [];
     var hits = [];
+    var misses = [];
     for (var i=0;i<anchors.length;i++){
       var a = anchors[i];
       var ok = true;
@@ -287,16 +349,27 @@
         if (c.mode==='include' && !present) { ok=false; break; }
         if (c.mode==='exclude' && present)  { ok=false; break; }
       }
-      if (ok) hits.push(a);
+      if (ok){
+        var best = nearestIncludedBrandDistance(a, comps, rMeters, anchorBrand);
+        hits.push(Object.assign({}, a, {
+          _nearestDist: isFinite(best.dist) ? best.dist : null,
+          _nearestBrand: best.brand,
+          _nearestStore: best.store
+        }));
+      } else {
+        var reason = firstBreakReason(a, comps, rMeters, anchorBrand);
+        misses.push(Object.assign({}, a, {
+          _break: reason
+        }));
+      }
     }
-    return hits;
+    return { hits: hits, misses: misses };
   }
 
-  // draw helpers
+  // --- Drawing helpers ---
   function drawBase(lat,lng,label,radius,isMatched){
     var pos = new kakao.maps.LatLng(lat, lng);
-    var marker = new kakao.maps.Marker({ position: pos, title: label || '' });
-    marker.setMap(map); baseMarkers.push(marker);
+    basePositions.push(pos);
     var fill = isMatched ? '#FF6B6B' : '#60A5FA';
     var circle = new kakao.maps.Circle({
       center: pos, radius: radius, strokeWeight: 2,
@@ -306,33 +379,21 @@
     circle.setMap(map); baseCircles.push(circle);
   }
 
-  function drawCompareDot(lat,lng,label){
-    if (!allowDrawCompare) return;
+  function drawCompareDot(lat,lng,label,colorHex){
     var safe = label ? label.replace(/"/g,'&quot;') : '';
-    var html = '<div style="width:14px;height:14px;border-radius:999px;background:#FFD400;border:2px solid #00000033;box-shadow:0 1px 2px #00000022" title="'+safe+'"></div>';
-    var overlay = new kakao.maps.CustomOverlay({ position: new kakao.maps.LatLng(lat,lng), content: html, yAnchor: 0.5, xAnchor: 0.5 });
+    var html = '<div style="width:12px;height:12px;border-radius:999px;background:'+colorHex+';border:2px solid #00000033;box-shadow:0 1px 2px #00000022" title="'+safe+'"></div>';
+    var overlay = new kakao.maps.CustomOverlay({
+      position: new kakao.maps.LatLng(lat,lng),
+      content: html,
+      yAnchor: 0.5, xAnchor: 0.5
+    });
     overlay.setMap(map); compareDots.push(overlay);
   }
 
-  function drawAllComparatorDots(comps){
-    if (!allowDrawCompare) return;
-    // 중복 좌표 제거용 키
-    var used = new Set();
-    comps.forEach(function(c){
-      var arr = datasets[c.brand] || [];
-      for (var i=0;i<arr.length;i++){
-        var p = arr[i];
-        var key = p.lat.toFixed(6)+'|'+p.lng.toFixed(6);
-        if (used.has(key)) continue; used.add(key);
-        drawCompareDot(p.lat, p.lng, p.name || p.address);
-      }
-    });
-  }
-
   function fitToAll(){
-    if (baseMarkers.length === 0 && compareDots.length === 0) return;
+    if (basePositions.length === 0 && compareDots.length === 0) return;
     var bounds = new kakao.maps.LatLngBounds();
-    baseMarkers.forEach(function(m){ bounds.extend(m.getPosition()); });
+    basePositions.forEach(function(p){ bounds.extend(p); });
     compareDots.forEach(function(o){ bounds.extend(o.getPosition()); });
     map.setBounds(bounds, 24, 24, 24, 24);
   }
@@ -342,14 +403,13 @@
     return '<a class="link" target="_blank" rel="noopener" href="'+url+'">지도열기</a>';
   }
 
-  // fly helper
   function flyTo(lat, lng, level){
     if (!map) return;
     var pos = new kakao.maps.LatLng(lat, lng);
     map.panTo(pos);
     if (level) { map.setLevel(level); }
   }
-  window.flyTo = flyTo; // expose for onclick
+  window.flyTo = flyTo;
 
   function renderMatchedList(rows, anchorBrand){
     if (!rows.length){
@@ -361,13 +421,116 @@
       var nameA = '<a href="#" class="store" onclick="flyTo('+r.lat+','+r.lng+',4);return false;">'+(r.name||'(무제)')+'</a>';
       var addr  = r.address || '';
       var link  = linkToKakaoMap(r.address || (r.lat+','+r.lng));
+
+      var distPart = '';
+      if (r._nearestDist != null){
+        var m = Math.round(r._nearestDist);
+        var brand = r._nearestBrand || '-';
+        var store = r._nearestStore ? ' · '+r._nearestStore : '';
+        distPart = '<div class="tiny">가장 가까운 비교사: <strong>'+brand+'</strong> ('+m+' m'+')'+store+'</div>';
+      } else {
+        distPart = '<div class="tiny muted">반경 내 비교사 최단거리 계산 불가</div>';
+      }
+
       return '<div style="margin:6px 0;">'
            +   '<div><strong>'+title+nameA+'</strong> <span class="badge">'+anchorBrand+'</span></div>'
            +   '<div class="muted">'+addr+'</div>'
+           +     distPart
            +   '<div class="tiny">'+link+'</div>'
            + '</div>';
     }).join('');
     $('matchedList').innerHTML = html;
+  }
+
+  function renderUnmatchedList(rows, anchorBrand, comps){
+    if (!rows.length){
+      $('unmatchedList').innerHTML = '<span class="muted">조건을 불만족하는 기준 매장이 없습니다.</span>';
+      return;
+    }
+    var html = rows.map(function(r,i){
+      var title = (i+1)+'. ';
+      var nameA = '<a href="#" class="store" onclick="flyTo('+r.lat+','+r.lng+',4);return false;">'+(r.name||'(무제)')+'</a>';
+      var addr  = r.address || '';
+      var link  = linkToKakaoMap(r.address || (r.lat+','+r.lng));
+
+      var reason = '';
+      if (r._break){
+        var t = r._break.type === 'include' ? '포함(있어야 함) 없음' : '미포함(없어야 함) 존재';
+        reason = '<div class="tiny">깨진 조건: <strong>'+r._break.brand+'</strong> — '+t+'</div>';
+      } else {
+        reason = '<div class="tiny muted">깨진 조건 파악 불가</div>';
+      }
+
+      return '<div style="margin:6px 0;">'
+           +   '<div><strong>'+title+nameA+'</strong> <span class="badge">'+anchorBrand+'</span></div>'
+           +   '<div class="muted">'+addr+'</div>'
+           +     reason
+           +   '<div class="tiny">'+link+'</div>'
+           + '</div>';
+    }).join('');
+    $('unmatchedList').innerHTML = html;
+  }
+
+  // --- NEW: comparator colors, legend, and radius-filtered dots ---
+  function buildColorMap(comps){
+    // 고정 팔레트(가독성 높은 색 위주)
+    var palette = [
+      '#F59E0B', // amber
+      '#10B981', // emerald
+      '#8B5CF6', // violet
+      '#0EA5E9', // sky
+      '#EF4444', // red
+      '#14B8A6', // teal
+      '#A855F7', // purple
+      '#22C55E', // green
+      '#EAB308', // yellow
+      '#FB7185'  // rose
+    ];
+    var map = {};
+    var used = 0;
+    comps.forEach(function(c){
+      if (!map[c.brand]) {
+        map[c.brand] = palette[used % palette.length];
+        used++;
+      }
+    });
+    return map;
+  }
+
+  function updateLegendWithComparators(colorMap, comps){
+    var legend = $('legend');
+    // 기준사 두 개 span은 유지하고, 뒤에 비교사들을 추가
+    var fixed = '<span class="dot base"></span> 기준(조건 만족) '+
+                '<span class="dot base-unmatched"></span> 기준(조건 불만족) ';
+    var compBits = comps.map(function(c){
+      var color = colorMap[c.brand];
+      var modeTxt = (c.mode === 'include') ? '포함' : '미포함';
+      return '<span class="dot" style="background:'+color+'"></span> '+c.brand+' ('+modeTxt+')';
+    }).join(' ');
+    legend.innerHTML = fixed + compBits;
+  }
+
+  function drawComparatorDotsWithinRadius(anchorBrand, comps, rMeters, colorMap){
+    var anchors = datasets[anchorBrand] || [];
+    var seen = new Set(); // 좌표 중복 방지(여러 반경에 걸친 동일 점)
+    // 비교사(포함/미포함 구분 없이) 선택된 브랜드들의 지점을 “기준사 반경 안에 있는 것만” 찍음
+    anchors.forEach(function(a){
+      comps.forEach(function(c){
+        var arr = datasets[c.brand] || [];
+        for (var i=0;i<arr.length;i++){
+          var s = arr[i];
+          var d = distM(a.lat, a.lng, s.lat, s.lng);
+          if (anchorBrand === c.brand && d < selfExcludeMeters) continue; // 자기 자신 제외
+          if (d <= rMeters){
+            var key = s.lat.toFixed(6)+'|'+s.lng.toFixed(6);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            var label = (s.name || s.address || '') + ' · ' + c.brand;
+            drawCompareDot(s.lat, s.lng, label, colorMap[c.brand]);
+          }
+        }
+      });
+    });
   }
 
   function analyzeAndDraw(){
@@ -385,18 +548,22 @@
     clearMap();
 
     var basePoints = datasets[anchor] || [];
-    var hits = findAnchorsMeetingConditions(anchor, comps, radius);
+    var result = findAnchorsMeetingConditions(anchor, comps, radius);
+    var hits = result.hits;
+    var misses = result.misses;
 
-    // draw base circles
-    var hitSet = new Set(hits.map(function(p){return p.lat.toFixed(6)+'|'+p.lng.toFixed(6);}));
+    // draw base circles (hit=빨강, miss=파랑)
+    var hitSet = new Set(hits.map(function(p){return p.lat.toFixed(6)+'|'+p.lng.toFixed(6);})); 
     basePoints.forEach(function(bp){
       var key = bp.lat.toFixed(6)+'|'+bp.lng.toFixed(6);
       var isHit = hitSet.has(key);
       drawBase(bp.lat, bp.lng, bp.name, radius, isHit);
     });
 
-    // comparator dots (optional)
-    drawAllComparatorDots(comps);
+    // --- NEW: legend & comparator dots inside radius ---
+    var colorMap = buildColorMap(comps);
+    updateLegendWithComparators(colorMap, comps);
+    drawComparatorDotsWithinRadius(anchor, comps, radius, colorMap);
 
     // stats
     $('statBase').textContent = 'Base: ' + basePoints.length + ' (' + anchor + ')';
@@ -405,25 +572,19 @@
     $('statUnmatched').textContent= '조건 불만족 기준: ' + (basePoints.length - hits.length);
 
     renderMatchedList(hits, anchor);
+    renderUnmatchedList(misses, anchor, comps);
     fitToAll();
-    log('Done. anchor="'+anchor+'", comps='+JSON.stringify(comps)+', radius='+radius+'m, hits='+hits.length);
+    log('Done. anchor="'+anchor+'", comps='+JSON.stringify(comps)+', radius='+radius+'m, hits='+hits.length+', misses='+misses.length);
   }
 
   $('run').addEventListener('click', analyzeAndDraw);
-
-  $('toggleDots').addEventListener('click', function(){
-    allowDrawCompare = !allowDrawCompare;
-    this.textContent = allowDrawCompare ? 'Dots: ON' : 'Dots: OFF';
-    // 재렌더
-    if (sdkReady && wbLoaded && $('baseBrand').value) analyzeAndDraw();
-  });
 
   // debounce utility
   function debounce(fn, ms){ var t; return function(){ var args=arguments; clearTimeout(t); t=setTimeout(function(){ fn.apply(null,args); }, ms); }; }
   var debouncedAnalyze = debounce(function(){ if (sdkReady && wbLoaded && $('baseBrand').value){ analyzeAndDraw(); } }, 300);
   $('radius').addEventListener('input', debouncedAnalyze);
   $('baseBrand').addEventListener('change', debouncedAnalyze);
-  $('compCount').addEventListener('change', debouncedAnalyze);
+  $('compCount').addEventListener('change', function(){ debouncedAnalyze(); });
 
   </script>
 </body>
