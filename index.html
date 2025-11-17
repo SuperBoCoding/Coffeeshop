@@ -370,7 +370,7 @@
   function drawBase(lat,lng,label,radius,isMatched){
     var pos = new kakao.maps.LatLng(lat, lng);
     basePositions.push(pos);
-    var fill = isMatched ? '#FF6B6B' : '#60A5FA';
+    var fill = isMatched ? '#FF6B6B' : '#C084FC';
     var circle = new kakao.maps.Circle({
       center: pos, radius: radius, strokeWeight: 2,
       strokeColor: fill, strokeOpacity: 1, strokeStyle: 'solid',
