@@ -133,7 +133,7 @@
   // --- colors (요청 반영)
   var COLOR_BASE_MATCHED   = '#FF6B6B'; // 기존: 조건 만족 기준(빨강)
   var COLOR_BASE_UNMATCHED = '#277475'; // ✅ 요청: 보라색 대신 초록색
-  // ✅ 겹쳐도 노랗게 안 보이게: fillOpacity=0 (stroke-only)
+  // ✅ 겹쳐도 노랗게 안 보이게: fillOpacity=0.3 (stroke-only)
 
   // --- state
   var map, sdkReady = false, wbLoaded = false;
@@ -524,7 +524,7 @@
     legend.innerHTML = fixed + compBits;
   }
 
-  function drawComparatorDotsWithinRadius(anchorBrand, comps, rMeters, colorMap){
+  //function drawComparatorDotsWithinRadius(anchorBrand, comps, rMeters, colorMap){
     var anchors = datasets[anchorBrand] || [];
     var seen = new Set();
     anchors.forEach(function(a){
