@@ -24,8 +24,8 @@
     .muted{color:#666}
     .legend{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
     .dot{width:12px;height:12px;border-radius:999px;display:inline-block;border:2px solid #0003}
-    .dot.base{background:#ff6b6b}
-    .dot.base-unmatched{background:#60a5fa}
+    .dot.base{background:#ff6b6b}          /* 조건 만족 기준 */
+    .dot.base-unmatched{background:#277475}/* ✅ 조건 불만족 기준: 요청 초록색 */
     .tiny{font-size:12px}
     .spacer{flex:1}
     a.link{color:#0a58ca;text-decoration:none}
@@ -55,7 +55,6 @@
     <div id="legend" class="legend tiny">
       <span class="dot base"></span> 기준(조건 만족)
       <span class="dot base-unmatched"></span> 기준(조건 불만족)
-      <!-- 비교사 색상은 분석 시 동적으로 채움 -->
     </div>
   </div>
 
@@ -75,7 +74,6 @@
     <button id="clear" class="secondary">Clear</button>
   </div>
 
-  <!-- NEW: Multi comparator controls -->
   <div class="row">
     <label for="compCount">비교사 수</label>
     <select id="compCount">
@@ -132,6 +130,11 @@
   <script>
   'use strict';
 
+  // --- colors (요청 반영)
+  var COLOR_BASE_MATCHED   = '#FF6B6B'; // 기존: 조건 만족 기준(빨강)
+  var COLOR_BASE_UNMATCHED = '#277475'; // ✅ 요청: 보라색 대신 초록색
+  // ✅ 겹쳐도 노랗게 안 보이게: fillOpacity=0 (stroke-only)
+
   // --- state
   var map, sdkReady = false, wbLoaded = false;
   var baseCircles = [], compareDots = [];
@@ -161,7 +164,13 @@
     if(sdkReady){ alert('SDK already loaded.'); return; }
     var s = document.createElement('script');
     s.src = 'https://dapi.kakao.com/v2/maps/sdk.js?appkey=' + encodeURIComponent(key) + '&autoload=false';
-    s.onload = function(){ kakao.maps.load(function(){ initMap(); sdkReady = true; log('SDK loaded.'); }); };
+    s.onload = function(){
+      kakao.maps.load(function(){
+        initMap();
+        sdkReady = true;
+        log('SDK loaded.');
+      });
+    };
     s.onerror = function(){ alert('SDK load failed. Check key & domain.'); };
     document.head.appendChild(s);
   });
@@ -169,6 +178,7 @@
   function initMap(){
     var center = new kakao.maps.LatLng(37.5665, 126.9780);
     map = new kakao.maps.Map($('map'), { center: center, level: 6 });
+    log('Map initialized.');
   }
 
   function clearMap(){
@@ -182,6 +192,7 @@
     $('statComps').textContent = 'Comparators: -';
     $('statMatched').textContent = '조건 만족 기준: -';
     $('statUnmatched').textContent = '조건 불만족 기준: -';
+
     // legend 초기화(기준사만 남김)
     var legend = $('legend');
     legend.innerHTML =
@@ -192,7 +203,14 @@
   $('clear').addEventListener('click', clearMap);
 
   // helpers
-  function toNum(v){ if(typeof v==='number') return v; var n=parseFloat(String(v).trim()); return isFinite(n)?n:NaN; }
+  function toNum(v){
+    if(typeof v==='number') return v;
+    var s = String(v ?? '').trim();
+    s = s.replace(/,/g,'.');         // 콤마 소수점 방지
+    s = s.replace(/[^\d.\-]/g,'');   // 단위/문자 제거
+    var n = parseFloat(s);
+    return isFinite(n)?n:NaN;
+  }
   function distM(a,b,c,d){
     var R=6371000,T=Math.PI/180,dl=(c-a)*T,do_=(d-b)*T;
     var s=Math.sin(dl/2)**2 + Math.cos(a*T)*Math.cos(c*T)*Math.sin(do_/2)**2;
@@ -358,9 +376,7 @@
         }));
       } else {
         var reason = firstBreakReason(a, comps, rMeters, anchorBrand);
-        misses.push(Object.assign({}, a, {
-          _break: reason
-        }));
+        misses.push(Object.assign({}, a, { _break: reason }));
       }
     }
     return { hits: hits, misses: misses };
@@ -370,13 +386,24 @@
   function drawBase(lat,lng,label,radius,isMatched){
     var pos = new kakao.maps.LatLng(lat, lng);
     basePositions.push(pos);
-    var fill = isMatched ? '#FF6B6B' : '#C084FC';
+
+    // ✅ 색상: 조건만족=빨강, 조건불만족=초록(#277475)
+    var stroke = isMatched ? COLOR_BASE_MATCHED : COLOR_BASE_UNMATCHED;
+
+    // ✅ 겹쳐도 노란색으로 안 보이게: 채움 제거(stroke-only)
     var circle = new kakao.maps.Circle({
-      center: pos, radius: radius, strokeWeight: 2,
-      strokeColor: fill, strokeOpacity: 1, strokeStyle: 'solid',
-      fillColor: fill, fillOpacity: 0.20
+      center: pos,
+      radius: radius,
+      strokeWeight: 2,
+      strokeColor: stroke,
+      strokeOpacity: 1,
+      strokeStyle: 'solid',
+      fillColor: stroke,
+      fillOpacity: 0   // ⭐ 핵심 (겹침 색 섞임 제거)
     });
-    circle.setMap(map); baseCircles.push(circle);
+
+    circle.setMap(map);
+    baseCircles.push(circle);
   }
 
   function drawCompareDot(lat,lng,label,colorHex){
@@ -442,7 +469,7 @@
     $('matchedList').innerHTML = html;
   }
 
-  function renderUnmatchedList(rows, anchorBrand, comps){
+  function renderUnmatchedList(rows, anchorBrand){
     if (!rows.length){
       $('unmatchedList').innerHTML = '<span class="muted">조건을 불만족하는 기준 매장이 없습니다.</span>';
       return;
@@ -471,35 +498,22 @@
     $('unmatchedList').innerHTML = html;
   }
 
-  // --- NEW: comparator colors, legend, and radius-filtered dots ---
+  // --- comparator colors, legend, and radius-filtered dots ---
   function buildColorMap(comps){
-    // 고정 팔레트(가독성 높은 색 위주)
     var palette = [
-      '#F59E0B', // amber
-      '#10B981', // emerald
-      '#8B5CF6', // violet
-      '#0EA5E9', // sky
-      '#EF4444', // red
-      '#14B8A6', // teal
-      '#A855F7', // purple
-      '#22C55E', // green
-      '#EAB308', // yellow
-      '#FB7185'  // rose
+      '#F59E0B','#10B981','#8B5CF6','#0EA5E9','#EF4444',
+      '#14B8A6','#A855F7','#22C55E','#EAB308','#FB7185'
     ];
     var map = {};
     var used = 0;
     comps.forEach(function(c){
-      if (!map[c.brand]) {
-        map[c.brand] = palette[used % palette.length];
-        used++;
-      }
+      if (!map[c.brand]) { map[c.brand] = palette[used % palette.length]; used++; }
     });
     return map;
   }
 
   function updateLegendWithComparators(colorMap, comps){
     var legend = $('legend');
-    // 기준사 두 개 span은 유지하고, 뒤에 비교사들을 추가
     var fixed = '<span class="dot base"></span> 기준(조건 만족) '+
                 '<span class="dot base-unmatched"></span> 기준(조건 불만족) ';
     var compBits = comps.map(function(c){
@@ -512,15 +526,14 @@
 
   function drawComparatorDotsWithinRadius(anchorBrand, comps, rMeters, colorMap){
     var anchors = datasets[anchorBrand] || [];
-    var seen = new Set(); // 좌표 중복 방지(여러 반경에 걸친 동일 점)
-    // 비교사(포함/미포함 구분 없이) 선택된 브랜드들의 지점을 “기준사 반경 안에 있는 것만” 찍음
+    var seen = new Set();
     anchors.forEach(function(a){
       comps.forEach(function(c){
         var arr = datasets[c.brand] || [];
         for (var i=0;i<arr.length;i++){
           var s = arr[i];
           var d = distM(a.lat, a.lng, s.lat, s.lng);
-          if (anchorBrand === c.brand && d < selfExcludeMeters) continue; // 자기 자신 제외
+          if (anchorBrand === c.brand && d < selfExcludeMeters) continue;
           if (d <= rMeters){
             var key = s.lat.toFixed(6)+'|'+s.lng.toFixed(6);
             if (seen.has(key)) continue;
@@ -552,7 +565,7 @@
     var hits = result.hits;
     var misses = result.misses;
 
-    // draw base circles (hit=빨강, miss=파랑)
+    // draw base circles
     var hitSet = new Set(hits.map(function(p){return p.lat.toFixed(6)+'|'+p.lng.toFixed(6);})); 
     basePoints.forEach(function(bp){
       var key = bp.lat.toFixed(6)+'|'+bp.lng.toFixed(6);
@@ -560,7 +573,7 @@
       drawBase(bp.lat, bp.lng, bp.name, radius, isHit);
     });
 
-    // --- NEW: legend & comparator dots inside radius ---
+    // legend & comparator dots inside radius
     var colorMap = buildColorMap(comps);
     updateLegendWithComparators(colorMap, comps);
     drawComparatorDotsWithinRadius(anchor, comps, radius, colorMap);
@@ -572,7 +585,7 @@
     $('statUnmatched').textContent= '조건 불만족 기준: ' + (basePoints.length - hits.length);
 
     renderMatchedList(hits, anchor);
-    renderUnmatchedList(misses, anchor, comps);
+    renderUnmatchedList(misses, anchor);
     fitToAll();
     log('Done. anchor="'+anchor+'", comps='+JSON.stringify(comps)+', radius='+radius+'m, hits='+hits.length+', misses='+misses.length);
   }
