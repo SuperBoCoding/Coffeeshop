@@ -524,7 +524,7 @@
     legend.innerHTML = fixed + compBits;
   }
 
-  //function drawComparatorDotsWithinRadius(anchorBrand, comps, rMeters, colorMap){
+  function drawComparatorDotsWithinRadius(anchorBrand, comps, rMeters, colorMap){
     var anchors = datasets[anchorBrand] || [];
     var seen = new Set();
     anchors.forEach(function(a){
@@ -576,7 +576,7 @@
     // legend & comparator dots inside radius
     var colorMap = buildColorMap(comps);
     updateLegendWithComparators(colorMap, comps);
-    drawComparatorDotsWithinRadius(anchor, comps, radius, colorMap);
+    // drawComparatorDotsWithinRadius(anchor, comps, radius, colorMap);
 
     // stats
     $('statBase').textContent = 'Base: ' + basePoints.length + ' (' + anchor + ')';
